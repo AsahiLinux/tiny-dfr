@@ -4,8 +4,8 @@ version = "0.3.4"
 edition = "2021"
 license = "MIT AND Apache-2.0"
 description = "The most basic dynamic function row daemon possible"
-homepage = "https://github.com/WhatAmISupposedToPutHere/tiny-dfr"
-repository = "https://github.com/WhatAmISupposedToPutHere/tiny-dfr"
+homepage = "https://github.com/AsahiLinux/tiny-dfr"
+repository = "https://github.com/AsahiLinux/tiny-dfr.git"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
