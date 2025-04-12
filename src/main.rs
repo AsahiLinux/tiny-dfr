@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use cairo::{Antialias, Context, Format, ImageSurface, Surface};
+use chrono::{Local, Locale, Timelike};
 use drm::control::ClipRect;
 use freedesktop_icons::lookup;
 use input::{
@@ -57,6 +58,7 @@ enum ButtonImage {
     Text(String),
     Svg(Handle),
     Bitmap(ImageSurface),
+    Time(String, String),
 }
 
 struct Button {
@@ -156,8 +158,14 @@ impl Button {
             Button::new_text(text, cfg.action)
         } else if let Some(icon) = cfg.icon {
             Button::new_icon(&icon, cfg.theme, cfg.action)
+        } else if let Some(time) = cfg.time {
+            let locale = match cfg.locale {
+                 Some(l) => l,
+                 None => "POSIX".to_string()
+            };
+            Button::new_time(cfg.action, time, locale)
         } else {
-            panic!("Invalid config, a button must have either Text or Icon")
+            panic!("Invalid config, a button must have either Text, Icon or Time")
         }
     }
     fn new_text(text: String, action: Key) -> Button {
@@ -175,6 +183,15 @@ impl Button {
             image,
             active: false,
             changed: false,
+        }
+    }
+
+    fn new_time(action: Key, format: String, locale: String) -> Button {
+        Button {
+            action,
+            active: false,
+            changed: false,
+            image: ButtonImage::Time(format, locale),
         }
     }
     fn render(
@@ -210,6 +227,37 @@ impl Button {
                 c.rectangle(x, y, ICON_SIZE as f64, ICON_SIZE as f64);
                 c.fill().unwrap();
             }
+            ButtonImage::Time(format, locale) => {
+                 let current_time = Local::now();
+                 let current_locale = Locale::try_from(locale.as_str()).unwrap_or(Locale::POSIX);
+                 let formatted_time;
+                 if format == "24hr" {
+                     formatted_time = format!(
+                     "{}:{}    {} {} {}",
+                      current_time.format_localized("%H", current_locale),
+                      current_time.format_localized("%M", current_locale),
+                      current_time.format_localized("%a", current_locale),
+                      current_time.format_localized("%-e", current_locale),
+                      current_time.format_localized("%b", current_locale)
+                 );
+                 } else {
+                     formatted_time = format!(
+                     "{}:{} {}    {} {} {}",
+                     current_time.format_localized("%-l", current_locale),
+                     current_time.format_localized("%M", current_locale),
+                     current_time.format_localized("%p", current_locale),
+                     current_time.format_localized("%a", current_locale),
+                     current_time.format_localized("%-e", current_locale),
+                     current_time.format_localized("%b", current_locale)
+                 );
+                 }
+                 let time_extents = c.text_extents(&formatted_time).unwrap();
+                 c.move_to(
+                     button_left_edge + (button_width as f64 / 2.0 - time_extents.width() / 2.0).round(),
+                     y_shift + (height as f64 / 2.0 + time_extents.height() / 2.0).round()
+                 );
+                 c.show_text(&formatted_time).unwrap();
+             }
         }
     }
     fn set_active<F>(&mut self, uinput: &mut UInputHandle<F>, active: bool)
@@ -247,6 +295,9 @@ impl FunctionLayer {
                     if stretch < 1 {
                         println!("Stretch value must be at least 1, setting to 1.");
                         stretch = 1;
+                    }
+                    if cfg.time.is_some() {
+                        stretch = stretch * 3;
                     }
                     **state += stretch;
                     Some((i, Button::with_config(cfg)))
@@ -514,6 +565,7 @@ fn real_main(drm: &mut DrmBackend) {
     let (db_width, db_height) = drm.fb_info().unwrap().size();
     let mut uinput = UInputHandle::new(OpenOptions::new().write(true).open("/dev/uinput").unwrap());
     let mut backlight = BacklightManager::new();
+    let mut last_redraw_minute = Local::now().minute();
     let mut cfg_mgr = ConfigManager::new();
     let (mut cfg, mut layers) = cfg_mgr.load_config(width);
     let mut pixel_shift = PixelShiftManager::new();
@@ -579,13 +631,24 @@ fn real_main(drm: &mut DrmBackend) {
             needs_complete_redraw = true;
         }
 
-        let mut next_timeout_ms = TIMEOUT_MS;
+        let now = Local::now();
+        let ms_left = ((60 - now.second()) * 1000) as i32;
+        let mut next_timeout_ms = min(ms_left, TIMEOUT_MS);
+
         if cfg.enable_pixel_shift {
             let (pixel_shift_needs_redraw, pixel_shift_next_timeout_ms) = pixel_shift.update();
             if pixel_shift_needs_redraw {
                 needs_complete_redraw = true;
             }
             next_timeout_ms = min(next_timeout_ms, pixel_shift_next_timeout_ms);
+        }
+
+        let current_minute = now.minute();
+        for button in &mut layers[active_layer].buttons {
+            if matches!(button.1.image, ButtonImage::Time(_, _)) && (current_minute != last_redraw_minute) {
+                 needs_complete_redraw = true;
+                 last_redraw_minute = current_minute;
+            }
         }
 
         if needs_complete_redraw || layers[active_layer].buttons.iter().any(|b| b.1.changed) {
