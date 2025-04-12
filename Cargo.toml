@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 rand = "0.8"
 freetype-rs = "0.37"
-freedesktop-icons = "0.3.1"
+freedesktop-icons = "0.4.0"
 
 [build-dependencies]
 pkg-config = "0.3"

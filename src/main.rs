@@ -108,14 +108,8 @@ fn try_load_image(name: impl AsRef<str>, theme: Option<impl AsRef<str>>) -> Resu
             lookup(name)
                 .with_cache()
                 .with_theme(theme)
-                .with_size(ICON_SIZE as u16)
-                .find(),
-            lookup(name)
-                .with_cache()
-                .with_theme(theme)
                 .force_svg()
                 .find(),
-            lookup(name).with_cache().with_theme(theme).find(),
         ];
 
         // .flatten() removes `None` and unwraps `Some` values
