@@ -41,6 +41,8 @@ pub struct ButtonConfig {
     pub icon: Option<String>,
     pub text: Option<String>,
     pub theme: Option<String>,
+    pub time: Option<String>,
+    pub locale: Option<String>,
     pub action: Key,
     pub stretch: Option<usize>,
 }
@@ -89,6 +91,8 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
                     theme: None,
                     action: Key::Esc,
                     stretch: None,
+                    time: None,
+                    locale: None,
                 },
             );
         }

@@ -55,7 +55,8 @@ PrimaryLayerKeys = [
     # Do not include the extension in the file name.
     # If a Theme is set, icons are looked up in XDG_DATA_DIRS.
     # Otherwise, they are first looked up in /etc/tiny-dfr, and then in /usr/share/tiny-dfr.
-    # Only one of Text or Icon is allowed,
+    # Time can be either 24hr, or 12hr. Locale is optional and will default to POSIX.
+    # Only one of Text, Icon or Time is allowed,
     # if both are present, the behavior is undefined.
     # For the list of supported key codes see
     # https://docs.rs/input-linux/latest/input_linux/enum.Key.html
@@ -90,6 +91,16 @@ PrimaryLayerKeys = [
     # { Text = "F10", Action = "F10", Stretch = 2 },
     # { Text = "F11", Action = "F11", Stretch = 2 },
     # { Text = "F12", Action = "F12", Stretch = 2 }
+
+    # Example of Time:
+    # { Time = "12hr",  Action = "Time"},
+    # Example of Time with locale:
+    # { Time = "12hr",  Locale = "en_IN", Action = "Time"},
+    # Example of Time with stretch:
+    # # the time key by default will be 3 times wider than the rest keys.
+    # # So the stretch value assigned will be 3 times the regular keys.
+    # { Time = "12hr",  Action = "Time", Stretch = 2},
+    # # Here, time key will be 3x2=6 times the normal keys.
 ]
 
 # This key defines the contents of the media key layer
