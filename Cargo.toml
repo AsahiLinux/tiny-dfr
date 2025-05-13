@@ -12,7 +12,7 @@ repository = "https://github.com/AsahiLinux/tiny-dfr.git"
 [dependencies]
 cairo-rs = { version = "0.20", default-features = false, features = ["freetype", "png"] }
 librsvg-rebind = "0.1"
-drm = "0.11.1"
+drm = "0.14"
 anyhow = "1"
 input = "0.8"
 libc = "0.2"
