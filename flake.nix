@@ -12,7 +12,7 @@
         in {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "tiny-dfr";
-            version = "0.3.4";
+            version = "0.3.5";
             src = ./.;
             cargoLock = { lockFile = ./Cargo.lock; };
             nativeBuildInputs = [ pkgs.pkg-config ];
