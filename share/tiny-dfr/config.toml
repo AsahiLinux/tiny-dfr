@@ -93,14 +93,13 @@ PrimaryLayerKeys = [
     # { Text = "F12", Action = "F12", Stretch = 2 }
 
     # Example of Time:
-    # { Time = "12hr",  Action = "Time", Stretch = 3},
+    # { Time = "12hr",  Action = "Time"},
     # Example of Time with locale:
-    # { Time = "12hr",  Locale = "en_IN", Action = "Time", Stretch = 3},
+    # { Time = "12hr",  Locale = "en_IN", Action = "Time"},
     # Example of Time with stretch:
-    # # the time key by default will be 3 times wider than the rest keys.
-    # # So the stretch value assigned will be 3 times the regular keys.
-    # { Time = "12hr",  Action = "Time", Stretch = 2},
-    # # Here, time key will be 3x2=6 times the normal keys.
+    # # the time key by default will be too small to accomodate date and time.
+    # # So it is recommended to have a stretch of atleast 3 times the rest keys.
+    # { Time = "12hr",  Action = "Time", Stretch = 3},
     # You can also put in your format string directly.
     # The available variables can be found here: https://docs.rs/chrono/latest/chrono/format/strftime/index.html
     # If your time block says "Time format error" you are using some invalid parameter.
