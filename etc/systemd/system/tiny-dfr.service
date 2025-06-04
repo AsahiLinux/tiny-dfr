@@ -1,5 +1,5 @@
 [Unit]
-Description=Tiny Apple silicon touch bar daemon
+Description=Tiny Apple T2 and Silicon Macs Touch Bar daemon
 After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service dev-tiny_dfr_display.device dev-tiny_dfr_backlight.device dev-tiny_dfr_display_backlight.device
 BindsTo=dev-tiny_dfr_display.device dev-tiny_dfr_backlight.device dev-tiny_dfr_display_backlight.device
 
