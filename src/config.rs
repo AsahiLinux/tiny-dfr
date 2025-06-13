@@ -42,6 +42,7 @@ pub struct ButtonConfig {
     pub text: Option<String>,
     pub theme: Option<String>,
     pub time: Option<String>,
+    pub battery: Option<bool>,
     pub locale: Option<String>,
     pub action: Key,
     pub stretch: Option<usize>,
@@ -93,6 +94,7 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
                     stretch: None,
                     time: None,
                     locale: None,
+                    battery: None,
                 },
             );
         }

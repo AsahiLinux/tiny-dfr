@@ -27,7 +27,7 @@ use privdrop::PrivDrop;
 use std::{
     cmp::min,
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     os::{
         fd::{AsFd, AsRawFd},
         unix::{fs::OpenOptionsExt, io::OwnedFd},
@@ -54,11 +54,19 @@ const BUTTON_COLOR_ACTIVE: f64 = 0.400;
 const ICON_SIZE: i32 = 48;
 const TIMEOUT_MS: i32 = 10 * 1000;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatteryState {
+    NotCharging,
+    Charging,
+    Low,
+}
+
 enum ButtonImage {
     Text(String),
     Svg(Handle),
     Bitmap(ImageSurface),
     Time(Vec<ChronoItem<'static>>, Locale),
+    Battery(BatteryState),
 }
 
 struct Button {
@@ -152,6 +160,62 @@ fn try_load_image(name: impl AsRef<str>, theme: Option<impl AsRef<str>>) -> Resu
     Err(last_err.context(format!("failed loading all possible paths for icon {name}")))
 }
 
+fn find_battery_device() -> Option<String> {
+    let power_supply_path = "/sys/class/power_supply";
+    if let Ok(entries) = fs::read_dir(power_supply_path) {
+        for entry in entries.flatten() {
+            let dev_path = entry.path();
+            let type_path = dev_path.join("type");
+            if let Ok(typ) = fs::read_to_string(&type_path) {
+                if typ.trim() == "Battery" {
+                    if let Some(name) = dev_path.file_name().and_then(|n| n.to_str()) {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn get_battery_state() -> BatteryState {
+    let battery = find_battery_device().unwrap();
+    let status_path = format!("/sys/class/power_supply/{}/status", battery);
+    let status = fs::read_to_string(&status_path)
+        .unwrap_or_else(|_| "Unknown".to_string());
+
+    #[cfg(target_arch = "x86_64")]
+    let capacity = {
+        let charge_now_path = format!("/sys/class/power_supply/{}/charge_now", battery);
+        let charge_full_path = format!("/sys/class/power_supply/{}/charge_full", battery);
+        let charge_now = fs::read_to_string(&charge_now_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok());
+        let charge_full = fs::read_to_string(&charge_full_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok());
+        match (charge_now, charge_full) {
+            (Some(now), Some(full)) if full > 0.0 => ((now / full) * 100.0).round() as u8,
+            _ => 100,
+        }
+    };
+
+    #[cfg(target_arch = "aarch64")]
+    let capacity = {
+        let capacity_path = format!("/sys/class/power_supply/{}/capacity", battery);
+        fs::read_to_string(&capacity_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<u8>().ok())
+            .unwrap_or(100)
+    };
+
+    match status.trim() {
+        "Charging" | "Full" => BatteryState::Charging,
+        "Discharging" if capacity < 10 => BatteryState::Low,
+        _ => BatteryState::NotCharging,
+    }
+}
+
 impl Button {
     fn with_config(cfg: ButtonConfig) -> Button {
         if let Some(text) = cfg.text {
@@ -160,6 +224,8 @@ impl Button {
             Button::new_icon(&icon, cfg.theme, cfg.action)
         } else if let Some(time) = cfg.time {
             Button::new_time(cfg.action, &time, cfg.locale.as_deref())
+        } else if cfg.battery == Some(true) {
+            Button::new_battery(cfg.action)
         } else {
             panic!("Invalid config, a button must have either Text, Icon or Time")
         }
@@ -179,6 +245,14 @@ impl Button {
             image,
             active: false,
             changed: false,
+        }
+    }
+    fn new_battery(action: Key) -> Button {
+        Button {
+            action,
+            active: false,
+            changed: false,
+            image: ButtonImage::Battery(get_battery_state()),
         }
     }
 
@@ -207,6 +281,7 @@ impl Button {
     fn render(
         &self,
         c: &Context,
+        config: &Config,
         height: i32,
         button_left_edge: f64,
         button_width: u64,
@@ -246,6 +321,49 @@ impl Button {
                     y_shift + (height as f64 / 2.0 + time_extents.height() / 2.0).round()
                 );
                 c.show_text(&formatted_time).unwrap();
+            }
+            ButtonImage::Battery(state) => {
+                let battery = find_battery_device().unwrap();
+
+                #[cfg(target_arch = "x86_64")]
+                let percent_str = {
+                    let charge_now_path = format!("/sys/class/power_supply/{}/charge_now", battery);
+                    let charge_full_path = format!("/sys/class/power_supply/{}/charge_full", battery);
+                    let charge_now = fs::read_to_string(&charge_now_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<f64>().ok());
+                    let charge_full = fs::read_to_string(&charge_full_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<f64>().ok());
+                    match (charge_now, charge_full) {
+                        (Some(now), Some(full)) if full > 0.0 => format!("{:.0}%", (now / full) * 100.0),
+                        _ => "Battery N/A".to_string(),
+                    }
+                };
+
+                #[cfg(target_arch = "aarch64")]
+                let percent_str = {
+                    let capacity_path = format!("/sys/class/power_supply/{}/capacity", battery);
+                    fs::read_to_string(&capacity_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u8>().ok())
+                        .map(|percent| format!("{:.0}%", percent))
+                        .unwrap_or_else(|| "Battery N/A".to_string())
+                };
+
+                let extents = c.text_extents(&percent_str).unwrap();
+                if !config.show_button_outlines && !self.active {
+                    if *state == BatteryState::Charging {
+                        c.set_source_rgb(0.0, 1.0, 0.0);
+                    } else if *state == BatteryState::Low {
+                        c.set_source_rgb(1.0, 0.0, 0.0);
+                    }
+                }
+                c.move_to(
+                    button_left_edge + (button_width as f64 / 2.0 - extents.width() / 2.0).round(),
+                    y_shift + (height as f64 / 2.0 + extents.height() / 2.0).round(),
+                );
+                c.show_text(&percent_str).unwrap();
             }
         }
     }
@@ -369,7 +487,13 @@ impl FunctionLayer {
                 );
                 c.fill().unwrap();
             }
-            c.set_source_rgb(color, color, color);
+            if matches!(button.image, ButtonImage::Battery(BatteryState::Charging)) {
+                c.set_source_rgb(0.0, color, 0.0);
+            } else if matches!(button.image, ButtonImage::Battery(BatteryState::Low)) {
+                c.set_source_rgb(color, 0.0, 0.0);
+            } else {
+                c.set_source_rgb(color, color, color);
+            }
             // draw box with rounded corners
             c.new_sub_path();
             let left = left_edge + radius;
@@ -408,6 +532,7 @@ impl FunctionLayer {
             c.set_source_rgb(1.0, 1.0, 1.0);
             button.render(
                 &c,
+                config,
                 height,
                 left_edge,
                 button_width.ceil() as u64,
@@ -634,6 +759,14 @@ fn real_main(drm: &mut DrmBackend) {
             if matches!(button.1.image, ButtonImage::Time(_, _)) && (current_minute != last_redraw_minute) {
                  needs_complete_redraw = true;
                  last_redraw_minute = current_minute;
+            }
+            if let ButtonImage::Battery(ref mut state) = button.1.image {
+                let battery_state = get_battery_state();
+                if *state != battery_state {
+                    *state = battery_state;
+                    button.1.changed = true;
+                    needs_complete_redraw = true;
+                }
             }
         }
 

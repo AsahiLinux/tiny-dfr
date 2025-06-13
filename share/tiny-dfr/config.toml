@@ -104,6 +104,16 @@ PrimaryLayerKeys = [
     # The available variables can be found here: https://docs.rs/chrono/latest/chrono/format/strftime/index.html
     # If your time block says "Time format error" you are using some invalid parameter.
     # { Time = "%H:%M %-e.%m.%Y", Action = "Time", Stretch = 2}
+
+    # Example of Battery:
+    # { Battery = true, Action = "Battery" }
+    # This will display a button showing the current battery percentage.
+    # The logic used to calcuate the percentage will be:
+    # 1. On T2 Macs:
+    # (Amount of energy currently available / Amount of energy in the battery when it’s considered full) * 100
+    # 2. On Apple Silicon Macs:
+    # Get the value reported by the SMC in /sys/class/power_supply.
+    # Button will turn green if battery is charging, and red if charge is <10% and is not charging.
 ]
 
 # This key defines the contents of the media key layer
