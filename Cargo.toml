@@ -27,6 +27,7 @@ freetype-rs = "0.37"
 freedesktop-icons = "0.4.0"
 chrono = { version = "0.4", features = ["unstable-locales"] }
 pure-rust-locales = "0.8"
+udev = "0.9"
 
 [build-dependencies]
 pkg-config = "0.3"

@@ -35,6 +35,7 @@ use std::{
     panic::{self, AssertUnwindSafe},
     path::{Path, PathBuf},
 };
+use udev::MonitorBuilder;
 
 mod backlight;
 mod config;
@@ -771,6 +772,12 @@ fn real_main(drm: &mut DrmBackend) {
     let mut input_main = Libinput::new_with_udev(Interface);
     input_tb.udev_assign_seat("seat-touchbar").unwrap();
     input_main.udev_assign_seat("seat0").unwrap();
+    let mut udev_monitor = MonitorBuilder::new()
+        .unwrap()
+        .match_subsystem("power_supply")
+        .unwrap()
+        .listen()
+        .unwrap();
     let epoll = Epoll::new(EpollCreateFlags::empty()).unwrap();
     epoll
         .add(input_main.as_fd(), EpollEvent::new(EpollFlags::EPOLLIN, 0))
@@ -780,6 +787,9 @@ fn real_main(drm: &mut DrmBackend) {
         .unwrap();
     epoll
         .add(cfg_mgr.fd(), EpollEvent::new(EpollFlags::EPOLLIN, 2))
+        .unwrap();
+    epoll
+        .add(&udev_monitor, EpollEvent::new(EpollFlags::EPOLLIN, 3))
         .unwrap();
     uinput.set_evbit(EventKind::Key).unwrap();
     for layer in &layers {
@@ -864,6 +874,9 @@ fn real_main(drm: &mut DrmBackend) {
             Err(Errno::EINTR) | Ok(_) => 0,
             e => e.unwrap(),
         };
+        for _event in udev_monitor.iter() {
+            // drain the udev monitor
+        }
         input_tb.dispatch().unwrap();
         input_main.dispatch().unwrap();
         for event in &mut input_tb.clone().chain(input_main.clone()) {
