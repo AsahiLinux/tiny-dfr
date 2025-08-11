@@ -462,6 +462,8 @@ impl Button {
 
 #[derive(Default)]
 pub struct FunctionLayer {
+    displays_time: bool,
+    displays_battery: bool,
     buttons: Vec<(usize, Button)>,
     virtual_button_count: usize,
 }
@@ -474,6 +476,8 @@ impl FunctionLayer {
 
         let mut virtual_button_count = 0;
         FunctionLayer {
+            displays_time: cfg.iter().any(|cfg| cfg.time.is_some()),
+            displays_battery: cfg.iter().any(|cfg| cfg.battery.is_some()),
             buttons: cfg
                 .into_iter()
                 .scan(&mut virtual_button_count, |state, cfg| {
@@ -837,13 +841,15 @@ fn real_main(drm: &mut DrmBackend) {
         }
 
         let current_minute = now.minute();
-        for button in &mut layers[active_layer].buttons {
-            if matches!(button.1.image, ButtonImage::Time(_, _)) && (current_minute != last_redraw_minute) {
-                 needs_complete_redraw = true;
-                 last_redraw_minute = current_minute;
-            }
-            if let ButtonImage::Battery(_, _, _) = button.1.image {
-                button.1.changed = true;
+        if layers[active_layer].displays_time && (current_minute != last_redraw_minute) {
+            needs_complete_redraw = true;
+            last_redraw_minute = current_minute;
+        }
+        if layers[active_layer].displays_battery {
+            for button in &mut layers[active_layer].buttons {
+                if let ButtonImage::Battery(_, _, _) = button.1.image {
+                    button.1.changed = true;
+                }
             }
         }
 

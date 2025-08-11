@@ -6,7 +6,7 @@ use freetype::Library as FtLibrary;
 use input_linux::Key;
 use nix::{
     errno::Errno,
-    sys::inotify::{AddWatchFlags, InitFlags, Inotify, WatchDescriptor},
+    sys::inotify::{AddWatchFlags, InitFlags, Inotify, InotifyEvent, WatchDescriptor},
 };
 use serde::Deserialize;
 use std::{fs::read_to_string, os::fd::AsFd};
@@ -152,14 +152,16 @@ impl ConfigManager {
             self.watch_desc = arm_inotify(&self.inotify_fd);
             return false;
         }
-        let evts = match self.inotify_fd.read_events() {
-            Ok(e) => e,
-            Err(Errno::EAGAIN) => Vec::new(),
-            r => r.unwrap(),
-        };
+        match self.inotify_fd.read_events() {
+            Err(Errno::EAGAIN) => false,
+            r => self.handle_events(cfg, layers, width, r),
+        }
+    }
+    #[cold]
+    fn handle_events(&mut self, cfg: &mut Config, layers: &mut [FunctionLayer; 2], width: u16, evts: Result<Vec<InotifyEvent>, Errno>) -> bool {
         let mut ret = false;
-        for evt in evts {
-            if evt.wd != self.watch_desc.unwrap() {
+        for evt in evts.unwrap() {
+            if Some(evt.wd) != self.watch_desc {
                 continue;
             }
             let parts = load_config(width);
