@@ -36,6 +36,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use udev::MonitorBuilder;
+use sysinfo::{System, RefreshKind, MemoryRefreshKind, CpuRefreshKind};
 
 mod backlight;
 mod config;
@@ -69,31 +70,40 @@ struct BatteryImages {
 }
 
 #[derive(Eq, PartialEq, Copy, Clone)]
-enum BatteryIconMode {
+enum IconMode {
     Percentage,
     Icon,
     Both
 }
 
-impl BatteryIconMode {
+impl IconMode {
     fn should_draw_icon(self) -> bool {
-        self != BatteryIconMode::Percentage
+        self != IconMode::Percentage
     }
     fn should_draw_text(self) -> bool {
-        self != BatteryIconMode::Icon
+        self != IconMode::Icon
     }
 }
 
 enum ButtonImage {
-    Text(String),
+    Text,
     Svg(Handle),
     Bitmap(ImageSurface),
-    Time(Vec<ChronoItem<'static>>, Locale),
-    Battery(String, BatteryIconMode, BatteryImages),
+    Time,
+    Battery,
 }
 
+enum ButtonType {
+    Text(String),
+    Image,
+    Time(Vec<ChronoItem<'static>>, Locale),
+    Battery(String, IconMode, BatteryImages),
+    Memory(IconMode),
+    Cpu(IconMode),
+}
 struct Button {
     image: ButtonImage,
+    button_type: ButtonType,
     changed: bool,
     active: bool,
     action: Key,
@@ -239,6 +249,27 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
     (capacity, status)
 }
 
+fn get_memory_usage() -> u32 {
+    let mut s = System::new();
+    s.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
+
+    ((s.used_memory() as f64 / s.total_memory() as f64) * 100.0).round() as u32
+}
+
+fn get_cpu_usage() -> u32 {
+    let mut s = System::new();
+    s.refresh_cpu_usage();
+    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+    s.refresh_cpu_usage();
+
+    let mut total = 0.0;
+    for cpu in s.cpus() {
+        total += cpu.cpu_usage();
+    }
+
+    (total / s.cpus().len() as f32).round() as u32
+}
+
 impl Button {
     fn with_config(cfg: ButtonConfig) -> Button {
         if let Some(text) = cfg.text {
@@ -253,65 +284,110 @@ impl Button {
             } else {
                 Button::new_text("Battery N/A".to_string(), cfg.action)
             }
+        } else if let Some(memory_mode) = cfg.memory {
+            Button::new_memory(cfg.action, memory_mode, cfg.theme)
+        } else if let Some(cpu_mode) = cfg.cpu {
+            Button::new_cpu(cfg.action, cpu_mode, cfg.theme)
         } else {
-            panic!("Invalid config, a button must have either Text, Icon or Time")
+            panic!("Invalid config, a button must have either Text, Icon, Time, Battery, Memory, or CPU")
         }
     }
     fn new_text(text: String, action: Key) -> Button {
         Button {
+            button_type: ButtonType::Text(text),
             action,
             active: false,
             changed: false,
-            image: ButtonImage::Text(text),
+            image: ButtonImage::Text,
         }
     }
     fn new_icon(path: impl AsRef<str>, theme: Option<impl AsRef<str>>, action: Key) -> Button {
         let image = try_load_image(path, theme).expect("failed to load icon");
         Button {
+            button_type: ButtonType::Image,
             action,
             image,
             active: false,
             changed: false,
         }
     }
-    fn load_battery_image(icon: &str, theme: Option<impl AsRef<str>>) -> Handle {
+    fn load_image(icon: &str, theme: Option<impl AsRef<str>>) -> Handle {
         if let ButtonImage::Svg(svg) = try_load_image(icon, theme).unwrap() {
             return svg;
         }
         panic!("failed to load icon");
     }
+
     fn new_battery(action: Key, battery: String, battery_mode: String, theme: Option<impl AsRef<str>>) -> Button {
-        let bolt = Self::load_battery_image("bolt", theme.as_ref());
+        let bolt = Self::load_image("bolt", theme.as_ref());
         let mut plain = Vec::new();
         let mut charging = Vec::new();
         for icon in [
             "battery_0_bar", "battery_1_bar", "battery_2_bar", "battery_3_bar",
             "battery_4_bar", "battery_5_bar", "battery_6_bar", "battery_full",
         ] {
-            plain.push(Self::load_battery_image(icon, theme.as_ref()));
+            plain.push(Self::load_image(icon, theme.as_ref()));
         }
         for icon in [
             "battery_charging_20", "battery_charging_30", "battery_charging_50",
             "battery_charging_60", "battery_charging_80",
             "battery_charging_90", "battery_charging_full",
         ] {
-            charging.push(Self::load_battery_image(icon, theme.as_ref()));
+            charging.push(Self::load_image(icon, theme.as_ref()));
         }
         let battery_mode = match battery_mode.as_str() {
-            "icon" => BatteryIconMode::Icon,
-            "percentage" => BatteryIconMode::Percentage,
-            "both" => BatteryIconMode::Both,
+            "icon" => IconMode::Icon,
+            "percentage" => IconMode::Percentage,
+            "both" => IconMode::Both,
             _ => panic!("invalid battery mode, accepted modes: icon, percentage, both"),
         };
         Button {
+            button_type: ButtonType::Battery(battery, battery_mode, BatteryImages {
+                plain, bolt, charging
+            }),
             action,
             active: false,
             changed: false,
-            image: ButtonImage::Battery(battery, battery_mode, BatteryImages {
-                plain, bolt, charging
-            }),
+            image: ButtonImage::Battery,
         }
     }
+
+    fn new_memory(action: Key, memory_mode: String, theme: Option<impl AsRef<str>>) -> Button {
+        let image = Self::load_image("memory", theme.as_ref());
+        let memory_mode = match memory_mode.as_str() {
+            "icon" => IconMode::Icon,
+            "percentage" => IconMode::Percentage,
+            "both" => IconMode::Both,
+            _ => panic!("invalid battery mode, accepted modes: icon, percentage, both"),
+        };
+
+        Button {
+            button_type: ButtonType::Memory(memory_mode),
+            action,
+            active: false,
+            changed: false,
+            image: ButtonImage::Svg(image),
+        }
+    }
+
+    fn new_cpu(action: Key, cpu_mode: String, theme: Option<impl AsRef<str>>) -> Button {
+        let image = Self::load_image("memory", theme.as_ref());
+        let cpu_mode = match cpu_mode.as_str() {
+            "icon" => IconMode::Icon,
+            "percentage" => IconMode::Percentage,
+            "both" => IconMode::Both,
+            _ => panic!("invalid battery mode, accepted modes: icon, percentage, both"),
+        };
+
+        Button {
+            button_type: ButtonType::Cpu(cpu_mode),
+            action,
+            active: false,
+            changed: false,
+            image: ButtonImage::Svg(image),
+        }
+    }
+
 
     fn new_time(action: Key, format: &str, locale_str: Option<&str>) -> Button {
         let format_str = if format == "24hr" {
@@ -329,10 +405,11 @@ impl Button {
 
         let locale = locale_str.and_then(|l| Locale::try_from(l).ok()).unwrap_or(Locale::POSIX);
         Button {
+            button_type: ButtonType::Time(format_items, locale),
             action,
             active: false,
             changed: false,
-            image: ButtonImage::Time(format_items, locale),
+            image: ButtonImage::Time,
         }
     }
     fn render(
@@ -343,8 +420,8 @@ impl Button {
         button_width: u64,
         y_shift: f64,
     ) {
-        match &self.image {
-            ButtonImage::Text(text) => {
+        match &self.button_type {
+            ButtonType::Text(text) => {
                 let extents = c.text_extents(text).unwrap();
                 c.move_to(
                     button_left_edge + (button_width as f64 / 2.0 - extents.width() / 2.0).round(),
@@ -352,23 +429,30 @@ impl Button {
                 );
                 c.show_text(text).unwrap();
             }
-            ButtonImage::Svg(svg) => {
-                let x =
-                    button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
-                let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+            ButtonType::Image => {
+                match &self.image {
+                    ButtonImage::Svg(svg) => {
+                        let x =
+                            button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
+                        let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
 
-                svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
-                    .unwrap();
+                        svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
+                            .unwrap();
+                    }
+                    ButtonImage::Bitmap(surf) => {
+                        let x =
+                            button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
+                        let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+                        c.set_source_surface(surf, x, y).unwrap();
+                        c.rectangle(x, y, ICON_SIZE as f64, ICON_SIZE as f64);
+                        c.fill().unwrap();
+                    }
+                    _ => {
+                        panic!("ButtonType is of Image but ButtonImage is not of Svg or Bitmap")
+                    }
+                }
             }
-            ButtonImage::Bitmap(surf) => {
-                let x =
-                    button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
-                let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
-                c.set_source_surface(surf, x, y).unwrap();
-                c.rectangle(x, y, ICON_SIZE as f64, ICON_SIZE as f64);
-                c.fill().unwrap();
-            }
-            ButtonImage::Time(format, locale) => {
+            ButtonType::Time(format, locale) => {
                 let current_time = Local::now();
                 let formatted_time = current_time.format_localized_with_items(format.iter(), *locale).to_string();
                 let time_extents = c.text_extents(&formatted_time).unwrap();
@@ -378,7 +462,7 @@ impl Button {
                 );
                 c.show_text(&formatted_time).unwrap();
             }
-            ButtonImage::Battery(battery, battery_mode, icons) => {
+            ButtonType::Battery(battery, battery_mode, icons) => {
                 let (capacity, state) = get_battery_state(battery);
                 let icon = if battery_mode.should_draw_icon() {
                     Some(match state {
@@ -433,6 +517,65 @@ impl Button {
                     c.show_text(&percent_str).unwrap();
                 }
             }
+            ButtonType::Memory(memory_mode) => {
+                let memory_usage = get_memory_usage();
+                let icon = if memory_mode.should_draw_icon() { Some(&self.image) } else { None };
+                let percent_str = format!("{:.0}%", memory_usage);
+                let extents = c.text_extents(&percent_str).unwrap();
+                let mut width = extents.width();
+                let mut text_offset = 0;
+                if let Some(ButtonImage::Svg(svg)) = icon {
+                    if !memory_mode.should_draw_text() {
+                        width = ICON_SIZE as f64;
+                    } else {
+                        width += ICON_SIZE as f64;
+                    }
+                    text_offset = ICON_SIZE;
+                    let x =
+                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0).round();
+                    let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+
+                    svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
+                        .unwrap();
+                }
+                if memory_mode.should_draw_text() {
+                    c.move_to(
+                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0 + text_offset as f64).round(),
+                        y_shift + (height as f64 / 2.0 + extents.height() / 2.0).round(),
+                    );
+                    c.show_text(&percent_str).unwrap();
+                }
+            }
+            ButtonType::Cpu(cpu_mode) => {
+                let cpu_usage = get_cpu_usage();
+                let icon = if cpu_mode.should_draw_icon() { Some(&self.image) } else { None };
+                let percent_str = format!("{:.0}%", cpu_usage);
+                let extents = c.text_extents(&percent_str).unwrap();
+                let mut width = extents.width();
+                let mut text_offset = 0;
+                if let Some(ButtonImage::Svg(svg)) = icon {
+                    if !cpu_mode.should_draw_text() {
+                        width = ICON_SIZE as f64;
+                    } else {
+                        width += ICON_SIZE as f64;
+                    }
+                    text_offset = ICON_SIZE;
+                    let x =
+                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0).round();
+                    let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+
+                    svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
+                        .unwrap();
+                }
+                if cpu_mode.should_draw_text() {
+                    c.move_to(
+                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0 + text_offset as f64).round(),
+                        y_shift + (height as f64 / 2.0 + extents.height() / 2.0).round(),
+                    );
+                    c.show_text(&percent_str).unwrap();
+                }
+            }
+
         }
     }
     fn set_active<F>(&mut self, uinput: &mut UInputHandle<F>, active: bool)
@@ -446,8 +589,9 @@ impl Button {
             toggle_key(uinput, self.action, active as i32);
         }
     }
-    fn set_backround_color(&self, c: &Context, color: f64) {
-        if let ButtonImage::Battery(battery, _, _) = &self.image {
+
+    fn set_background_color(&self, c: &Context, color: f64) {
+        if let ButtonType::Battery(battery, _, _) = &self.button_type {
             let (_, state) = get_battery_state(battery);
             match state {
                 BatteryState::NotCharging => c.set_source_rgb(color, color, color),
@@ -571,7 +715,7 @@ impl FunctionLayer {
                 );
                 c.fill().unwrap();
             }
-            button.set_backround_color(&c, color);
+            button.set_background_color(&c, color);
             // draw box with rounded corners
             c.new_sub_path();
             let left = left_edge + radius;
@@ -847,7 +991,7 @@ fn real_main(drm: &mut DrmBackend) {
         }
         if layers[active_layer].displays_battery {
             for button in &mut layers[active_layer].buttons {
-                if let ButtonImage::Battery(_, _, _) = button.1.image {
+                if let ButtonImage::Battery = button.1.image {
                     button.1.changed = true;
                 }
             }
