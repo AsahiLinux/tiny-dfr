@@ -74,7 +74,7 @@ pub struct ButtonConfig {
     pub time: Option<String>,
     pub battery: Option<String>,
     pub locale: Option<String>,
-    #[serde(deserialize_with = "array_or_single")]
+    #[serde(deserialize_with = "array_or_single", default)]
     pub action: Vec<Key>,
     pub stretch: Option<usize>,
 }
