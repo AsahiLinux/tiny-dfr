@@ -61,7 +61,7 @@ PrimaryLayerKeys = [
     # Only one of Text, Icon or Time is allowed,
     # if more than one is present, the behavior is undefined.
     # If none is present, the space that would be occupied by this button will be left empty,
-    # and any actions assigned to it will be ignored.
+    # and this button must have an empty list as its action.
     # For the list of supported key codes see
     # https://docs.rs/input-linux/latest/input_linux/enum.Key.html
     # Note that the escape key is not specified here, as it is added
@@ -127,8 +127,8 @@ PrimaryLayerKeys = [
     # Button will turn green if battery is charging, and red if charge is <10% and is not charging.
 
     # Example of a Spacer:
-    # { Stretch = 3 }
-    # Stretch functions the same way as it does for normal buttons.
+    # { Action = [], Stretch = 3 }
+    # Stretch functions the same way as it does for normal buttons. Action must be an empty list.
 ]
 
 # This key defines the contents of the media key layer

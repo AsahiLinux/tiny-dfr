@@ -255,6 +255,9 @@ impl Button {
                 Button::new_text("Battery N/A".to_string(), cfg.action)
             }
         } else {
+            if !cfg.action.is_empty() {
+                panic!("Spacer must have an empty action.");
+            }
             Button::new_spacer()
         }
     }
