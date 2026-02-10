@@ -45,6 +45,10 @@ ActiveBrightness = 128
 # that many button spaces).
 PrimaryLayerKeys = [
     # Action defines the key code to send when the button is pressed
+    # Alternatively, you may specify a key combination with
+    # KeyCombo = [ "KeyCode", "KeyCode", .. ]
+    # When both KeyCombo and Action are present, Action is ignored
+    # If both are absent, no action is performed when that button is pressed
     # Text defines the button label
     # Icon specifies the icon to be used for the button.
     # Theme specifies the XDG icons theme.
@@ -94,6 +98,9 @@ PrimaryLayerKeys = [
     # { Text = "F11", Action = "F11", Stretch = 2 },
     # { Text = "F12", Action = "F12", Stretch = 2 }
 
+    # Example for a button that sends a key combination:
+    # { Text = "TTY1", KeyCombo = [ "LeftCtrl", "LeftAlt", "F1" ] },
+
     # Example of Time:
     # { Time = "12hr",  Action = "Time"},
     # Example of Time with locale:
@@ -122,8 +129,8 @@ PrimaryLayerKeys = [
     # Button will turn green if battery is charging, and red if charge is <10% and is not charging.
 
     # Example of a Spacer:
-    # { Action = "Reserved", Stretch = 3 }
-    # Note that even though Action will be ignored, it is still required in the config file.
+    # { Stretch = 3 }
+    # Stretch functions the same way as it does for normal buttons.
 ]
 
 # This key defines the contents of the media key layer

@@ -97,7 +97,7 @@ struct Button {
     image: ButtonImage,
     changed: bool,
     active: bool,
-    action: Key,
+    action: Vec<Key>,
 }
 
 fn try_load_svg(path: &str) -> Result<ButtonImage> {
@@ -242,17 +242,24 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
 
 impl Button {
     fn with_config(cfg: ButtonConfig) -> Button {
+        let cfg_keys = |action: Option<Key>, key_combo: Option<Vec<Key>>| {
+            if let Some(kc) = key_combo {
+                kc
+            } else if let Some(a) = action {
+                vec![a]
+            } else { vec![] }
+        };
         if let Some(text) = cfg.text {
-            Button::new_text(text, cfg.action)
+            Button::new_text(text, cfg_keys(cfg.action, cfg.key_combo))
         } else if let Some(icon) = cfg.icon {
-            Button::new_icon(&icon, cfg.theme, cfg.action)
+            Button::new_icon(&icon, cfg.theme, cfg_keys(cfg.action, cfg.key_combo))
         } else if let Some(time) = cfg.time {
-            Button::new_time(cfg.action, &time, cfg.locale.as_deref())
+            Button::new_time(cfg_keys(cfg.action, cfg.key_combo), &time, cfg.locale.as_deref())
         } else if let Some(battery_mode) = cfg.battery {
             if let Some(battery) = find_battery_device() {
-                Button::new_battery(cfg.action, battery, battery_mode, cfg.theme)
+                Button::new_battery(cfg_keys(cfg.action, cfg.key_combo), battery, battery_mode, cfg.theme)
             } else {
-                Button::new_text("Battery N/A".to_string(), cfg.action)
+                Button::new_text("Battery N/A".to_string(), cfg_keys(cfg.action, cfg.key_combo))
             }
         } else {
             Button::new_spacer()
@@ -260,13 +267,13 @@ impl Button {
     }
     fn new_spacer() -> Button {
         Button {
-            action: Key::Reserved,
+            action: vec![],
             active: false,
             changed: false,
             image: ButtonImage::Spacer,
         }
     }
-    fn new_text(text: String, action: Key) -> Button {
+    fn new_text(text: String, action: Vec<Key>) -> Button {
         Button {
             action,
             active: false,
@@ -274,7 +281,7 @@ impl Button {
             image: ButtonImage::Text(text),
         }
     }
-    fn new_icon(path: impl AsRef<str>, theme: Option<impl AsRef<str>>, action: Key) -> Button {
+    fn new_icon(path: impl AsRef<str>, theme: Option<impl AsRef<str>>, action: Vec<Key>) -> Button {
         let image = try_load_image(path, theme).expect("failed to load icon");
         Button {
             action,
@@ -289,7 +296,7 @@ impl Button {
         }
         panic!("failed to load icon");
     }
-    fn new_battery(action: Key, battery: String, battery_mode: String, theme: Option<impl AsRef<str>>) -> Button {
+    fn new_battery(action: Vec<Key>, battery: String, battery_mode: String, theme: Option<impl AsRef<str>>) -> Button {
         let bolt = Self::load_battery_image("bolt", theme.as_ref());
         let mut plain = Vec::new();
         let mut charging = Vec::new();
@@ -322,7 +329,7 @@ impl Button {
         }
     }
 
-    fn new_time(action: Key, format: &str, locale_str: Option<&str>) -> Button {
+    fn new_time(action: Vec<Key>, format: &str, locale_str: Option<&str>) -> Button {
         let format_str = if format == "24hr" {
             "%H:%M    %a %-e %b"
         } else if format == "12hr" {
@@ -468,7 +475,7 @@ impl Button {
             self.active = active;
             self.changed = true;
 
-            toggle_key(uinput, self.action, active as i32);
+            toggle_keys(uinput, &self.action, active as i32);
         }
     }
     fn set_background_color(&self, c: &Context, color: f64) {
@@ -741,11 +748,14 @@ where
         .unwrap();
 }
 
-fn toggle_key<F>(uinput: &mut UInputHandle<F>, code: Key, value: i32)
+fn toggle_keys<F>(uinput: &mut UInputHandle<F>, codes: &Vec<Key>, value: i32)
 where
     F: AsRawFd,
 {
-    emit(uinput, EventKind::Key, code as u16, value);
+    if codes.is_empty() { return; }
+    for kc in codes {
+        emit(uinput, EventKind::Key, *kc as u16, value);
+    }
     emit(
         uinput,
         EventKind::Synchronize,
@@ -829,7 +839,9 @@ fn real_main(drm: &mut DrmBackend) {
     uinput.set_evbit(EventKind::Key).unwrap();
     for layer in &layers {
         for button in &layer.buttons {
-            uinput.set_keybit(button.1.action).unwrap();
+            for k in &button.1.action {
+                uinput.set_keybit(*k).unwrap();
+            }
         }
     }
     let mut dev_name_c = [0 as c_char; 80];

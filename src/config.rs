@@ -44,7 +44,8 @@ pub struct ButtonConfig {
     pub time: Option<String>,
     pub battery: Option<String>,
     pub locale: Option<String>,
-    pub action: Key,
+    pub action: Option<Key>,
+    pub key_combo: Option<Vec<Key>>,
     pub stretch: Option<usize>,
 }
 
@@ -90,7 +91,8 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
                     icon: None,
                     text: Some("esc".into()),
                     theme: None,
-                    action: Key::Esc,
+                    action: Some(Key::Esc),
+                    key_combo: None,
                     stretch: None,
                     time: None,
                     locale: None,
