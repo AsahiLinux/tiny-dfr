@@ -90,6 +90,7 @@ enum ButtonImage {
     Bitmap(ImageSurface),
     Time(Vec<ChronoItem<'static>>, Locale),
     Battery(String, BatteryIconMode, BatteryImages),
+    Spacer,
 }
 
 struct Button {
@@ -254,7 +255,15 @@ impl Button {
                 Button::new_text("Battery N/A".to_string(), cfg.action)
             }
         } else {
-            panic!("Invalid config, a button must have either Text, Icon or Time")
+            Button::new_spacer()
+        }
+    }
+    fn new_spacer() -> Button {
+        Button {
+            action: Key::Reserved,
+            active: false,
+            changed: false,
+            image: ButtonImage::Spacer,
         }
     }
     fn new_text(text: String, action: Key) -> Button {
@@ -448,6 +457,7 @@ impl Button {
                     c.show_text(&percent_str).unwrap();
                 }
             }
+            ButtonImage::Spacer => (),
         }
     }
     fn set_active<F>(&mut self, uinput: &mut UInputHandle<F>, active: bool)
@@ -461,7 +471,7 @@ impl Button {
             toggle_key(uinput, self.action, active as i32);
         }
     }
-    fn set_backround_color(&self, c: &Context, color: f64) {
+    fn set_background_color(&self, c: &Context, color: f64) {
         if let ButtonImage::Battery(battery, _, _) = &self.image {
             let (_, state) = get_battery_state(battery);
             match state {
@@ -592,42 +602,43 @@ impl FunctionLayer {
                 );
                 c.fill().unwrap();
             }
-            button.set_backround_color(&c, color);
-            // draw box with rounded corners
-            c.new_sub_path();
-            let left = left_edge + radius;
-            let right = (left_edge + button_width.ceil()) - radius;
-            c.arc(
-                right,
-                bot,
-                radius,
-                (-90.0f64).to_radians(),
-                (0.0f64).to_radians(),
-            );
-            c.arc(
-                right,
-                top,
-                radius,
-                (0.0f64).to_radians(),
-                (90.0f64).to_radians(),
-            );
-            c.arc(
-                left,
-                top,
-                radius,
-                (90.0f64).to_radians(),
-                (180.0f64).to_radians(),
-            );
-            c.arc(
-                left,
-                bot,
-                radius,
-                (180.0f64).to_radians(),
-                (270.0f64).to_radians(),
-            );
-            c.close_path();
-
-            c.fill().unwrap();
+            if !matches!(button.image, ButtonImage::Spacer) {
+                button.set_background_color(&c, color);
+                // draw box with rounded corners
+                c.new_sub_path();
+                let left = left_edge + radius;
+                let right = (left_edge + button_width.ceil()) - radius;
+                c.arc(
+                    right,
+                    bot,
+                    radius,
+                    (-90.0f64).to_radians(),
+                    (0.0f64).to_radians(),
+                );
+                c.arc(
+                    right,
+                    top,
+                    radius,
+                    (0.0f64).to_radians(),
+                    (90.0f64).to_radians(),
+                );
+                c.arc(
+                    left,
+                    top,
+                    radius,
+                    (90.0f64).to_radians(),
+                    (180.0f64).to_radians(),
+                );
+                c.arc(
+                    left,
+                    bot,
+                    radius,
+                    (180.0f64).to_radians(),
+                    (270.0f64).to_radians(),
+                );
+                c.close_path();
+                c.fill().unwrap();
+            }
             c.set_source_rgb(1.0, 1.0, 1.0);
             button.render(
                 &c,
