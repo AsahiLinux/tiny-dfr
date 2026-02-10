@@ -8,8 +8,11 @@ use nix::{
     errno::Errno,
     sys::inotify::{AddWatchFlags, InitFlags, Inotify, InotifyEvent, WatchDescriptor},
 };
-use serde::Deserialize;
-use std::{fs::read_to_string, os::fd::AsFd};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer,
+};
+use std::{fmt, fs::read_to_string, os::fd::AsFd};
 
 const USER_CFG_PATH: &str = "/etc/tiny-dfr/config.toml";
 
@@ -34,6 +37,33 @@ struct ConfigProxy {
     media_layer_keys: Option<Vec<ButtonConfig>>,
 }
 
+fn array_or_single<'de, D>(deserializer: D) -> Result<Vec<Key>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct ArrayOrSingle;
+
+    impl<'de> Visitor<'de> for ArrayOrSingle {
+        type Value = Vec<Key>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("string or array of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<Key>, E> {
+            Ok(vec![Deserialize::deserialize(
+                de::value::BorrowedStrDeserializer::new(value),
+            )?])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<Vec<Key>, A::Error> {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(ArrayOrSingle)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ButtonConfig {
@@ -44,8 +74,8 @@ pub struct ButtonConfig {
     pub time: Option<String>,
     pub battery: Option<String>,
     pub locale: Option<String>,
-    pub action: Option<Key>,
-    pub key_combo: Option<Vec<Key>>,
+    #[serde(deserialize_with = "array_or_single")]
+    pub action: Vec<Key>,
     pub stretch: Option<usize>,
 }
 
@@ -91,8 +121,7 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
                     icon: None,
                     text: Some("esc".into()),
                     theme: None,
-                    action: Some(Key::Esc),
-                    key_combo: None,
+                    action: vec![Key::Esc],
                     stretch: None,
                     time: None,
                     locale: None,

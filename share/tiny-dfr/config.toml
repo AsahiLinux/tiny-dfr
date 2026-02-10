@@ -45,10 +45,8 @@ ActiveBrightness = 128
 # that many button spaces).
 PrimaryLayerKeys = [
     # Action defines the key code to send when the button is pressed
-    # Alternatively, you may specify a key combination with
-    # KeyCombo = [ "KeyCode", "KeyCode", .. ]
-    # When both KeyCombo and Action are present, Action is ignored
-    # If both are absent, no action is performed when that button is pressed
+    # You can specify either a single key, or a key combo by
+    # setting this field to an array.
     # Text defines the button label
     # Icon specifies the icon to be used for the button.
     # Theme specifies the XDG icons theme.
@@ -99,7 +97,7 @@ PrimaryLayerKeys = [
     # { Text = "F12", Action = "F12", Stretch = 2 }
 
     # Example for a button that sends a key combination:
-    # { Text = "TTY1", KeyCombo = [ "LeftCtrl", "LeftAlt", "F1" ] },
+    # { Text = "TTY1", Action = [ "LeftCtrl", "LeftAlt", "F1" ] },
 
     # Example of Time:
     # { Time = "12hr",  Action = "Time"},

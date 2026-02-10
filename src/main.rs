@@ -242,24 +242,17 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
 
 impl Button {
     fn with_config(cfg: ButtonConfig) -> Button {
-        let cfg_keys = |action: Option<Key>, key_combo: Option<Vec<Key>>| {
-            if let Some(kc) = key_combo {
-                kc
-            } else if let Some(a) = action {
-                vec![a]
-            } else { vec![] }
-        };
         if let Some(text) = cfg.text {
-            Button::new_text(text, cfg_keys(cfg.action, cfg.key_combo))
+            Button::new_text(text, cfg.action)
         } else if let Some(icon) = cfg.icon {
-            Button::new_icon(&icon, cfg.theme, cfg_keys(cfg.action, cfg.key_combo))
+            Button::new_icon(&icon, cfg.theme, cfg.action)
         } else if let Some(time) = cfg.time {
-            Button::new_time(cfg_keys(cfg.action, cfg.key_combo), &time, cfg.locale.as_deref())
+            Button::new_time(cfg.action, &time, cfg.locale.as_deref())
         } else if let Some(battery_mode) = cfg.battery {
             if let Some(battery) = find_battery_device() {
-                Button::new_battery(cfg_keys(cfg.action, cfg.key_combo), battery, battery_mode, cfg.theme)
+                Button::new_battery(cfg.action, battery, battery_mode, cfg.theme)
             } else {
-                Button::new_text("Battery N/A".to_string(), cfg_keys(cfg.action, cfg.key_combo))
+                Button::new_text("Battery N/A".to_string(), cfg.action)
             }
         } else {
             Button::new_spacer()
@@ -752,7 +745,9 @@ fn toggle_keys<F>(uinput: &mut UInputHandle<F>, codes: &Vec<Key>, value: i32)
 where
     F: AsRawFd,
 {
-    if codes.is_empty() { return; }
+    if codes.is_empty() {
+        return;
+    }
     for kc in codes {
         emit(uinput, EventKind::Key, *kc as u16, value);
     }
@@ -865,7 +860,11 @@ fn real_main(drm: &mut DrmBackend) {
 
     let mut digitizer: Option<InputDevice> = None;
     let mut touches = HashMap::new();
-    let mut last_redraw_ts = if layers[active_layer].faster_refresh { Local::now().second() } else { Local::now().minute() };
+    let mut last_redraw_ts = if layers[active_layer].faster_refresh {
+        Local::now().second()
+    } else {
+        Local::now().minute()
+    };
     loop {
         if cfg_mgr.update_config(&mut cfg, &mut layers, width) {
             active_layer = 0;
@@ -884,7 +883,11 @@ fn real_main(drm: &mut DrmBackend) {
             next_timeout_ms = min(next_timeout_ms, pixel_shift_next_timeout_ms);
         }
 
-        let current_ts = if layers[active_layer].faster_refresh { Local::now().second() } else { Local::now().minute() };
+        let current_ts = if layers[active_layer].faster_refresh {
+            Local::now().second()
+        } else {
+            Local::now().minute()
+        };
         if layers[active_layer].displays_time && (current_ts != last_redraw_ts) {
             needs_complete_redraw = true;
             last_redraw_ts = current_ts;
