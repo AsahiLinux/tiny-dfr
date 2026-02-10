@@ -335,6 +335,21 @@ impl Button {
             image: ButtonImage::Time(format_items, locale),
         }
     }
+    fn needs_faster_refresh(&self) -> bool {
+        match &self.image {
+            ButtonImage::Time(items, _) =>
+                items.iter().any(|item| {
+                    use chrono::format::{Item, Numeric};
+                    match item {
+                        Item::Numeric(Numeric::Second, _) |
+                        Item::Numeric(Numeric::Nanosecond, _) |
+                        Item::Numeric(Numeric::Timestamp, _) => true,
+                        _ => false,
+                    }
+                }),
+            _ => false,
+        }
+    }
     fn render(
         &self,
         c: &Context,
@@ -466,6 +481,7 @@ pub struct FunctionLayer {
     displays_battery: bool,
     buttons: Vec<(usize, Button)>,
     virtual_button_count: usize,
+    faster_refresh: bool,
 }
 
 impl FunctionLayer {
@@ -475,23 +491,28 @@ impl FunctionLayer {
         }
 
         let mut virtual_button_count = 0;
+        let displays_time = cfg.iter().any(|cfg| cfg.time.is_some());
+        let displays_battery = cfg.iter().any(|cfg| cfg.battery.is_some());
+        let buttons = cfg
+            .into_iter()
+            .scan(&mut virtual_button_count, |state, cfg| {
+                let i = **state;
+                let mut stretch = cfg.stretch.unwrap_or(1);
+                if stretch < 1 {
+                    println!("Stretch value must be at least 1, setting to 1.");
+                    stretch = 1;
+                }
+                **state += stretch;
+                Some((i, Button::with_config(cfg)))
+            })
+            .collect::<Vec<_>>();
+        let faster_refresh = buttons.iter().any(|(_, b)| b.needs_faster_refresh());
         FunctionLayer {
-            displays_time: cfg.iter().any(|cfg| cfg.time.is_some()),
-            displays_battery: cfg.iter().any(|cfg| cfg.battery.is_some()),
-            buttons: cfg
-                .into_iter()
-                .scan(&mut virtual_button_count, |state, cfg| {
-                    let i = **state;
-                    let mut stretch = cfg.stretch.unwrap_or(1);
-                    if stretch < 1 {
-                        println!("Stretch value must be at least 1, setting to 1.");
-                        stretch = 1;
-                    }
-                    **state += stretch;
-                    Some((i, Button::with_config(cfg)))
-                })
-                .collect(),
+            displays_time,
+            displays_battery,
+            buttons,
             virtual_button_count,
+            faster_refresh,
         }
     }
     fn draw(
@@ -753,7 +774,6 @@ fn real_main(drm: &mut DrmBackend) {
     let (db_width, db_height) = drm.fb_info().unwrap().size();
     let mut uinput = UInputHandle::new(OpenOptions::new().write(true).open("/dev/uinput").unwrap());
     let mut backlight = BacklightManager::new();
-    let mut last_redraw_minute = Local::now().minute();
     let mut cfg_mgr = ConfigManager::new();
     let (mut cfg, mut layers) = cfg_mgr.load_config(width);
     let mut pixel_shift = PixelShiftManager::new();
@@ -822,6 +842,7 @@ fn real_main(drm: &mut DrmBackend) {
 
     let mut digitizer: Option<InputDevice> = None;
     let mut touches = HashMap::new();
+    let mut last_redraw_ts = if layers[active_layer].faster_refresh { Local::now().second() } else { Local::now().minute() };
     loop {
         if cfg_mgr.update_config(&mut cfg, &mut layers, width) {
             active_layer = 0;
@@ -840,10 +861,10 @@ fn real_main(drm: &mut DrmBackend) {
             next_timeout_ms = min(next_timeout_ms, pixel_shift_next_timeout_ms);
         }
 
-        let current_minute = now.minute();
-        if layers[active_layer].displays_time && (current_minute != last_redraw_minute) {
+        let current_ts = if layers[active_layer].faster_refresh { Local::now().second() } else { Local::now().minute() };
+        if layers[active_layer].displays_time && (current_ts != last_redraw_ts) {
             needs_complete_redraw = true;
-            last_redraw_minute = current_minute;
+            last_redraw_ts = current_ts;
         }
         if layers[active_layer].displays_battery {
             for button in &mut layers[active_layer].buttons {
