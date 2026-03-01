@@ -1,6 +1,6 @@
 [package]
 name = "tiny-dfr"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2021"
 license = "MIT AND Apache-2.0"
 description = "The most basic dynamic function row daemon possible"

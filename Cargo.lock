@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "tiny-dfr"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "anyhow",
  "cairo-rs",
