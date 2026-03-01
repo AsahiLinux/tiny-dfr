@@ -207,29 +207,30 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
     let status = fs::read_to_string(&status_path)
         .unwrap_or_else(|_| "Unknown".to_string());
 
-    #[cfg(target_arch = "x86_64")]
     let capacity = {
-        let charge_now_path = format!("/sys/class/power_supply/{}/charge_now", battery);
-        let charge_full_path = format!("/sys/class/power_supply/{}/charge_full", battery);
-        let charge_now = fs::read_to_string(&charge_now_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<f64>().ok());
-        let charge_full = fs::read_to_string(&charge_full_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<f64>().ok());
-        match (charge_now, charge_full) {
-            (Some(now), Some(full)) if full > 0.0 => ((now / full) * 100.0).round() as u32,
-            _ => 100,
+        #[cfg(target_arch = "x86_64")]
+        {
+            let charge_now_path = format!("/sys/class/power_supply/{}/charge_now", battery);
+            let charge_full_path = format!("/sys/class/power_supply/{}/charge_full", battery);
+            let charge_now = fs::read_to_string(&charge_now_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<f64>().ok());
+            let charge_full = fs::read_to_string(&charge_full_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<f64>().ok());
+            match (charge_now, charge_full) {
+                (Some(now), Some(full)) if full > 0.0 => ((now / full) * 100.0).round() as u32,
+                _ => 100,
+            }
         }
-    };
-
-    #[cfg(target_arch = "aarch64")]
-    let capacity = {
-        let capacity_path = format!("/sys/class/power_supply/{}/capacity", battery);
-        fs::read_to_string(&capacity_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok())
-            .unwrap_or(100)
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let capacity_path = format!("/sys/class/power_supply/{}/capacity", battery);
+            fs::read_to_string(&capacity_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .unwrap_or(100)
+        }
     };
 
     let status = match status.trim() {
