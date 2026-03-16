@@ -14,7 +14,7 @@ cairo-rs = { version = "0.20", default-features = false, features = ["freetype",
 librsvg-rebind = "0.1"
 drm = "0.14"
 anyhow = "1"
-input = "0.8"
+input = "0.9"
 libc = "0.2"
 input-linux = { version = "0.7", features = ["serde"] }
 input-linux-sys = "0.9"
