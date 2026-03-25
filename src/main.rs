@@ -833,12 +833,8 @@ fn real_main(drm: &mut DrmBackend) {
         .add(&udev_monitor, EpollEvent::new(EpollFlags::EPOLLIN, 3))
         .unwrap();
     uinput.set_evbit(EventKind::Key).unwrap();
-    for layer in &layers {
-        for button in &layer.buttons {
-            for k in &button.1.action {
-                uinput.set_keybit(*k).unwrap();
-            }
-        }
+    for k in Key::iter() {
+        uinput.set_keybit(k).unwrap();
     }
     let mut dev_name_c = [0 as c_char; 80];
     let dev_name = "Dynamic Function Row Virtual Input Device".as_bytes();
