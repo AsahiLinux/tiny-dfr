@@ -102,7 +102,7 @@ struct Button {
 
 fn try_load_svg(path: &str) -> Result<ButtonImage> {
     Ok(ButtonImage::Svg(
-        Handle::from_file(path)?.ok_or(anyhow!("failed to load image"))?,
+        Handle::from_file(path).map_err(|_| anyhow!("failed to load image"))?,
     ))
 }
 
