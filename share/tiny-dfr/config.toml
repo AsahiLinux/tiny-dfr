@@ -35,6 +35,10 @@ AdaptiveBrightness = true
 # Accepted values are 0-255
 ActiveBrightness = 128
 
+# Set this to true if you want to be able to switch the default layer
+# (function or media keys) by pressing the Fn key
+FnToggleLayers = false
+
 # This key defines the contents of the primary layer
 # (the one with F{number} keys)
 # You can change the individual buttons, add, or remove them
