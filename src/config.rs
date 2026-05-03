@@ -77,6 +77,8 @@ pub struct ButtonConfig {
     #[serde(deserialize_with = "array_or_single", default)]
     pub action: Vec<Key>,
     pub stretch: Option<usize>,
+    pub icon_width: Option<i32>,
+    pub icon_height: Option<i32>,
 }
 
 fn load_font(name: &str) -> FontFace {
@@ -126,6 +128,8 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
                     time: None,
                     locale: None,
                     battery: None,
+                    icon_width: None,
+                    icon_height: None,
                 },
             );
         }

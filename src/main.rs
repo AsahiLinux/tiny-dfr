@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use cairo::{Antialias, Context, Format, ImageSurface, Surface};
-use chrono::{Local, Locale, Timelike, format::{StrftimeItems, Item as ChronoItem}};
+use chrono::{
+    format::{Item as ChronoItem, StrftimeItems},
+    Local, Locale, Timelike,
+};
 use drm::control::ClipRect;
 use freedesktop_icons::lookup;
 use input::{
@@ -52,7 +55,7 @@ use pixel_shift::{PixelShiftManager, PIXEL_SHIFT_WIDTH_PX};
 const BUTTON_SPACING_PX: i32 = 16;
 const BUTTON_COLOR_INACTIVE: f64 = 0.200;
 const BUTTON_COLOR_ACTIVE: f64 = 0.400;
-const ICON_SIZE: i32 = 48;
+const DEFAULT_ICON_SIZE: i32 = 48;
 const TIMEOUT_MS: i32 = 10 * 1000;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,7 +75,7 @@ struct BatteryImages {
 enum BatteryIconMode {
     Percentage,
     Icon,
-    Both
+    Both,
 }
 
 impl BatteryIconMode {
@@ -98,6 +101,8 @@ struct Button {
     changed: bool,
     active: bool,
     action: Vec<Key>,
+    icon_width: f64,
+    icon_height: f64,
 }
 
 fn try_load_svg(path: &str) -> Result<ButtonImage> {
@@ -106,17 +111,17 @@ fn try_load_svg(path: &str) -> Result<ButtonImage> {
     ))
 }
 
-fn try_load_png(path: impl AsRef<Path>) -> Result<ButtonImage> {
+fn try_load_png(path: impl AsRef<Path>, icon_width: i32, icon_height: i32) -> Result<ButtonImage> {
     let mut file = File::open(path)?;
     let surf = ImageSurface::create_from_png(&mut file)?;
-    if surf.height() == ICON_SIZE && surf.width() == ICON_SIZE {
+    if surf.height() == icon_height && surf.width() == icon_width {
         return Ok(ButtonImage::Bitmap(surf));
     }
-    let resized = ImageSurface::create(Format::ARgb32, ICON_SIZE, ICON_SIZE).unwrap();
+    let resized = ImageSurface::create(Format::ARgb32, icon_width, icon_height).unwrap();
     let c = Context::new(&resized).unwrap();
     c.scale(
-        ICON_SIZE as f64 / surf.width() as f64,
-        ICON_SIZE as f64 / surf.height() as f64,
+        icon_width as f64 / surf.width() as f64,
+        icon_height as f64 / surf.height() as f64,
     );
     c.set_source_surface(surf, 0.0, 0.0).unwrap();
     c.set_antialias(Antialias::Best);
@@ -124,7 +129,12 @@ fn try_load_png(path: impl AsRef<Path>) -> Result<ButtonImage> {
     Ok(ButtonImage::Bitmap(resized))
 }
 
-fn try_load_image(name: impl AsRef<str>, theme: Option<impl AsRef<str>>) -> Result<ButtonImage> {
+fn try_load_image(
+    name: impl AsRef<str>,
+    theme: Option<impl AsRef<str>>,
+    icon_width: i32,
+    icon_height: i32,
+) -> Result<ButtonImage> {
     let name = name.as_ref();
     let locations;
 
@@ -136,7 +146,7 @@ fn try_load_image(name: impl AsRef<str>, theme: Option<impl AsRef<str>>) -> Resu
             lookup(name)
                 .with_cache()
                 .with_theme(theme)
-                .with_size(ICON_SIZE as u16)
+                .with_size(icon_height as u16)
                 .force_svg()
                 .find(),
             lookup(name)
@@ -163,7 +173,7 @@ fn try_load_image(name: impl AsRef<str>, theme: Option<impl AsRef<str>>) -> Resu
 
     for location in locations {
         let result = match location.extension().and_then(|s| s.to_str()) {
-            Some("png") => try_load_png(&location),
+            Some("png") => try_load_png(&location, icon_width, icon_height),
             Some("svg") => try_load_svg(
                 location
                     .to_str()
@@ -204,8 +214,7 @@ fn find_battery_device() -> Option<String> {
 
 fn get_battery_state(battery: &str) -> (u32, BatteryState) {
     let status_path = format!("/sys/class/power_supply/{}/status", battery);
-    let status = fs::read_to_string(&status_path)
-        .unwrap_or_else(|_| "Unknown".to_string());
+    let status = fs::read_to_string(&status_path).unwrap_or_else(|_| "Unknown".to_string());
 
     let capacity = {
         #[cfg(target_arch = "x86_64")]
@@ -246,7 +255,13 @@ impl Button {
         if let Some(text) = cfg.text {
             Button::new_text(text, cfg.action)
         } else if let Some(icon) = cfg.icon {
-            Button::new_icon(&icon, cfg.theme, cfg.action)
+            Button::new_icon(
+                &icon,
+                cfg.theme,
+                cfg.action,
+                cfg.icon_width.unwrap_or(DEFAULT_ICON_SIZE),
+                cfg.icon_height.unwrap_or(DEFAULT_ICON_SIZE),
+            )
         } else if let Some(time) = cfg.time {
             Button::new_time(cfg.action, &time, cfg.locale.as_deref())
         } else if let Some(battery_mode) = cfg.battery {
@@ -265,6 +280,8 @@ impl Button {
             active: false,
             changed: false,
             image: ButtonImage::Spacer,
+            icon_width: 0.0,
+            icon_height: 0.0,
         }
     }
     fn new_text(text: String, action: Vec<Key>) -> Button {
@@ -273,24 +290,42 @@ impl Button {
             active: false,
             changed: false,
             image: ButtonImage::Text(text),
+            icon_width: 0.0,
+            icon_height: 0.0,
         }
     }
-    fn new_icon(path: impl AsRef<str>, theme: Option<impl AsRef<str>>, action: Vec<Key>) -> Button {
-        let image = try_load_image(path, theme).expect("failed to load icon");
+    fn new_icon(
+        path: impl AsRef<str>,
+        theme: Option<impl AsRef<str>>,
+        action: Vec<Key>,
+        icon_width: i32,
+        icon_height: i32,
+    ) -> Button {
+        let image =
+            try_load_image(path, theme, icon_width, icon_height).expect("failed to load icon");
         Button {
             action,
             image,
+            icon_width: icon_width as f64,
+            icon_height: icon_height as f64,
             active: false,
             changed: false,
         }
     }
     fn load_battery_image(icon: &str, theme: Option<impl AsRef<str>>) -> Handle {
-        if let ButtonImage::Svg(svg) = try_load_image(icon, theme).unwrap() {
+        if let ButtonImage::Svg(svg) =
+            try_load_image(icon, theme, DEFAULT_ICON_SIZE, DEFAULT_ICON_SIZE).unwrap()
+        {
             return svg;
         }
         panic!("failed to load icon");
     }
-    fn new_battery(action: Vec<Key>, battery: String, battery_mode: String, theme: Option<impl AsRef<str>>) -> Button {
+    fn new_battery(
+        action: Vec<Key>,
+        battery: String,
+        battery_mode: String,
+        theme: Option<impl AsRef<str>>,
+    ) -> Button {
         let bolt = Self::load_battery_image("bolt", theme.as_ref());
         let mut plain = Vec::new();
         let mut charging = Vec::new();
@@ -317,9 +352,17 @@ impl Button {
             action,
             active: false,
             changed: false,
-            image: ButtonImage::Battery(battery, battery_mode, BatteryImages {
-                plain, bolt, charging
-            }),
+            image: ButtonImage::Battery(
+                battery,
+                battery_mode,
+                BatteryImages {
+                    plain,
+                    bolt,
+                    charging,
+                },
+            ),
+            icon_width: 0.0,
+            icon_height: 0.0,
         }
     }
 
@@ -337,26 +380,29 @@ impl Button {
             Err(e) => panic!("Invalid time format, consult the configuration file for examples of correct ones: {e:?}"),
         };
 
-        let locale = locale_str.and_then(|l| Locale::try_from(l).ok()).unwrap_or(Locale::POSIX);
+        let locale = locale_str
+            .and_then(|l| Locale::try_from(l).ok())
+            .unwrap_or(Locale::POSIX);
         Button {
             action,
             active: false,
             changed: false,
             image: ButtonImage::Time(format_items, locale),
+            icon_width: 0.0,
+            icon_height: 0.0,
         }
     }
     fn needs_faster_refresh(&self) -> bool {
         match &self.image {
-            ButtonImage::Time(items, _) =>
-                items.iter().any(|item| {
-                    use chrono::format::{Item, Numeric};
-                    match item {
-                        Item::Numeric(Numeric::Second, _) |
-                        Item::Numeric(Numeric::Nanosecond, _) |
-                        Item::Numeric(Numeric::Timestamp, _) => true,
-                        _ => false,
-                    }
-                }),
+            ButtonImage::Time(items, _) => items.iter().any(|item| {
+                use chrono::format::{Item, Numeric};
+                match item {
+                    Item::Numeric(Numeric::Second, _)
+                    | Item::Numeric(Numeric::Nanosecond, _)
+                    | Item::Numeric(Numeric::Timestamp, _) => true,
+                    _ => false,
+                }
+            }),
             _ => false,
         }
     }
@@ -379,27 +425,30 @@ impl Button {
             }
             ButtonImage::Svg(svg) => {
                 let x =
-                    button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
-                let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+                    button_left_edge + (button_width as f64 / 2.0 - self.icon_width / 2.0).round();
+                let y = y_shift + ((height as f64 - self.icon_height) / 2.0).round();
 
-                svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
+                svg.render_document(c, &Rectangle::new(x, y, self.icon_width, self.icon_height))
                     .unwrap();
             }
             ButtonImage::Bitmap(surf) => {
                 let x =
-                    button_left_edge + (button_width as f64 / 2.0 - (ICON_SIZE / 2) as f64).round();
-                let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+                    button_left_edge + (button_width as f64 / 2.0 - self.icon_width / 2.0).round();
+                let y = y_shift + ((height as f64 - self.icon_height) / 2.0).round();
                 c.set_source_surface(surf, x, y).unwrap();
-                c.rectangle(x, y, ICON_SIZE as f64, ICON_SIZE as f64);
+                c.rectangle(x, y, self.icon_width, self.icon_height);
                 c.fill().unwrap();
             }
             ButtonImage::Time(format, locale) => {
                 let current_time = Local::now();
-                let formatted_time = current_time.format_localized_with_items(format.iter(), *locale).to_string();
+                let formatted_time = current_time
+                    .format_localized_with_items(format.iter(), *locale)
+                    .to_string();
                 let time_extents = c.text_extents(&formatted_time).unwrap();
                 c.move_to(
-                    button_left_edge + (button_width as f64 / 2.0 - time_extents.width() / 2.0).round(),
-                    y_shift + (height as f64 / 2.0 + time_extents.height() / 2.0).round()
+                    button_left_edge
+                        + (button_width as f64 / 2.0 - time_extents.width() / 2.0).round(),
+                    y_shift + (height as f64 / 2.0 + time_extents.height() / 2.0).round(),
                 );
                 c.show_text(&formatted_time).unwrap();
             }
@@ -438,21 +487,25 @@ impl Button {
                 let mut text_offset = 0;
                 if let Some(svg) = icon {
                     if !battery_mode.should_draw_text() {
-                        width = ICON_SIZE as f64;
+                        width = DEFAULT_ICON_SIZE as f64;
                     } else {
-                        width += ICON_SIZE as f64;
+                        width += DEFAULT_ICON_SIZE as f64;
                     }
-                    text_offset = ICON_SIZE;
-                    let x =
-                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0).round();
-                    let y = y_shift + ((height as f64 - ICON_SIZE as f64) / 2.0).round();
+                    text_offset = DEFAULT_ICON_SIZE;
+                    let x = button_left_edge + (button_width as f64 / 2.0 - width / 2.0).round();
+                    let y = y_shift + ((height as f64 - DEFAULT_ICON_SIZE as f64) / 2.0).round();
 
-                    svg.render_document(c, &Rectangle::new(x, y, ICON_SIZE as f64, ICON_SIZE as f64))
-                        .unwrap();
+                    svg.render_document(
+                        c,
+                        &Rectangle::new(x, y, DEFAULT_ICON_SIZE as f64, DEFAULT_ICON_SIZE as f64),
+                    )
+                    .unwrap();
                 }
                 if battery_mode.should_draw_text() {
                     c.move_to(
-                        button_left_edge + (button_width as f64 / 2.0 - width / 2.0 + text_offset as f64).round(),
+                        button_left_edge
+                            + (button_width as f64 / 2.0 - width / 2.0 + text_offset as f64)
+                                .round(),
                         y_shift + (height as f64 / 2.0 + extents.height() / 2.0).round(),
                     );
                     c.show_text(&percent_str).unwrap();
