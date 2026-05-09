@@ -35,6 +35,11 @@ AdaptiveBrightness = true
 # Accepted values are 0-255
 ActiveBrightness = 128
 
+# With a quick double press of the FN key switch the default layer.
+# 0 disables the feature, >0 defines how quick the double press must be in ms.
+# A sensible value to try is around 200.
+DoublePressSwitchLayers = 0
+
 # This key defines the contents of the primary layer
 # (the one with F{number} keys)
 # You can change the individual buttons, add, or remove them

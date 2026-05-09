@@ -37,6 +37,7 @@ use std::{
     },
     panic::{self, AssertUnwindSafe},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 use udev::MonitorBuilder;
 
@@ -847,6 +848,7 @@ fn real_main(drm: &mut DrmBackend) {
     let mut cfg_mgr = ConfigManager::new();
     let (mut cfg, mut layers) = cfg_mgr.load_config(width);
     let mut pixel_shift = PixelShiftManager::new();
+    let mut last = Instant::now();
 
     // drop privileges to input and video group
     let groups = ["input", "video"];
@@ -993,6 +995,12 @@ fn real_main(drm: &mut DrmBackend) {
                 }
                 Event::Keyboard(KeyboardEvent::Key(key)) => {
                     if key.key() == Key::Fn as u32 {
+                        if cfg.double_press_switch_layers > 0 && key.key_state() == KeyState::Pressed {
+                            if last.elapsed() < Duration::from_millis(cfg.double_press_switch_layers.into()) {
+                                layers.swap(0, 1);
+                            }
+                            last = Instant::now();
+                        }
                         let new_layer = match key.key_state() {
                             KeyState::Pressed => 1,
                             KeyState::Released => 0,

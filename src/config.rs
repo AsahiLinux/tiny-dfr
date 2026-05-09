@@ -22,6 +22,7 @@ pub struct Config {
     pub font_face: FontFace,
     pub adaptive_brightness: bool,
     pub active_brightness: u32,
+    pub double_press_switch_layers: u32,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +34,7 @@ struct ConfigProxy {
     font_template: Option<String>,
     adaptive_brightness: Option<bool>,
     active_brightness: Option<u32>,
+    double_press_switch_layers: Option<u32>,
     primary_layer_keys: Option<Vec<ButtonConfig>>,
     media_layer_keys: Option<Vec<ButtonConfig>>,
 }
@@ -112,6 +114,7 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
         base.media_layer_keys = user.media_layer_keys.or(base.media_layer_keys);
         base.primary_layer_keys = user.primary_layer_keys.or(base.primary_layer_keys);
         base.active_brightness = user.active_brightness.or(base.active_brightness);
+        base.double_press_switch_layers = user.double_press_switch_layers.or(base.double_press_switch_layers);
     };
     let mut media_layer_keys = base.media_layer_keys.unwrap();
     let mut primary_layer_keys = base.primary_layer_keys.unwrap();
@@ -147,6 +150,7 @@ fn load_config(width: u16) -> (Config, [FunctionLayer; 2]) {
         adaptive_brightness: base.adaptive_brightness.unwrap(),
         font_face: load_font(&base.font_template.unwrap()),
         active_brightness: base.active_brightness.unwrap(),
+        double_press_switch_layers: base.double_press_switch_layers.unwrap(),
     };
     (cfg, layers)
 }
