@@ -71,13 +71,15 @@ pub struct BacklightManager {
     current_bl: u32,
     lid_state: SwitchState,
     bl_file: File,
-    display_bl_path: PathBuf,
+    display_bl_path: Option<PathBuf>,
 }
 
 impl BacklightManager {
     pub fn new() -> BacklightManager {
         let bl_path = find_backlight().unwrap();
-        let display_bl_path = find_display_backlight().unwrap();
+        let display_bl_path = find_display_backlight()
+            .inspect_err(|e| eprintln!("Failed to find display backlight sysfs path: {e}"))
+            .ok();
         let bl_file = OpenOptions::new()
             .write(true)
             .open(bl_path.join("brightness"))
@@ -122,10 +124,12 @@ impl BacklightManager {
                 0
             } else if since_last_active < BRIGHTNESS_DIM_TIMEOUT as u64 {
                 if cfg.adaptive_brightness {
-                    BacklightManager::display_to_touchbar(
-                        read_attr(&self.display_bl_path, "brightness"),
-                        cfg.active_brightness,
-                    )
+                    let brightness = if let Some(path) = &self.display_bl_path {
+                        read_attr(path, "brightness")
+                    } else {
+                        self.max_bl / 2
+                    };
+                    BacklightManager::display_to_touchbar(brightness, cfg.active_brightness)
                 } else {
                     cfg.active_brightness
                 }
