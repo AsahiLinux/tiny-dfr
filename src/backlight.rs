@@ -103,11 +103,7 @@ impl BacklightManager {
     fn display_to_touchbar(&self, display: u32, active_brightness: u32) -> u32 {
         let max_display = self.max_display_bl.max(1) as f64;
         let normalized = (display as f64 / max_display).clamp(0.0, 1.0);
-        let target_max = if self.max_bl <= 2 {
-            active_brightness.min(self.max_bl)
-        } else {
-            active_brightness.min(self.max_bl)
-        };
+        let target_max = active_brightness.min(self.max_bl);
 
         if target_max == 0 {
             0
