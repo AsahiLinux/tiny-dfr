@@ -840,6 +840,20 @@ fn main() {
     sigset.wait().unwrap();
 }
 
+/// Resolve a `(layer, button)` pair recorded earlier against the current
+/// layout.
+///
+/// Indices are captured when a touch begins and reused on the motion and up
+/// events that follow. A config reload in between rebuilds the layers, so the
+/// pair can name a button that no longer exists; returning `None` there keeps
+/// the caller from indexing out of bounds.
+fn button_at(layers: &mut [FunctionLayer; 2], layer: usize, btn: usize) -> Option<&mut Button> {
+    layers
+        .get_mut(layer)
+        .and_then(|l| l.buttons.get_mut(btn))
+        .map(|b| &mut b.1)
+}
+
 fn real_main(drm: &mut DrmBackend) {
     let (height, width) = drm.mode().size();
     let (db_width, db_height) = drm.fb_info().unwrap().size();
@@ -1027,24 +1041,29 @@ fn real_main(drm: &mut DrmBackend) {
                             }
                         }
                         TouchEvent::Motion(mtn) => {
-                            if !touches.contains_key(&mtn.seat_slot()) {
+                            let Some(&(layer, btn)) = touches.get(&mtn.seat_slot()) else {
                                 continue;
-                            }
+                            };
 
                             let x = mtn.x_transformed(width as u32);
                             let y = mtn.y_transformed(height as u32);
-                            let (layer, btn) = *touches.get(&mtn.seat_slot()).unwrap();
                             let hit = layers[active_layer]
                                 .hit(width, height, x, y, Some(btn))
                                 .is_some();
-                            layers[layer].buttons[btn].1.set_active(&mut uinput, hit);
+                            // The layout may have been rebuilt by a config
+                            // reload since this touch began, in which case the
+                            // recorded index no longer refers to a live button.
+                            if let Some(button) = button_at(&mut layers, layer, btn) {
+                                button.set_active(&mut uinput, hit);
+                            }
                         }
                         TouchEvent::Up(up) => {
-                            if !touches.contains_key(&up.seat_slot()) {
+                            let Some((layer, btn)) = touches.remove(&up.seat_slot()) else {
                                 continue;
+                            };
+                            if let Some(button) = button_at(&mut layers, layer, btn) {
+                                button.set_active(&mut uinput, false);
                             }
-                            let (layer, btn) = *touches.get(&up.seat_slot()).unwrap();
-                            layers[layer].buttons[btn].1.set_active(&mut uinput, false);
                         }
                         _ => {}
                     }
