@@ -925,7 +925,11 @@ fn real_main(drm: &mut DrmBackend) {
         }
 
         let now = Local::now();
-        let ms_left = ((60 - now.second()) * 1000) as i32;
+        let ms_left = if layers[active_layer].faster_refresh {
+            (1000 - now.timestamp_subsec_millis() % 1000) as i32
+        } else {
+            ((60 - now.second()) * 1000) as i32
+        };
         let mut next_timeout_ms = min(ms_left, TIMEOUT_MS);
 
         if cfg.enable_pixel_shift {
