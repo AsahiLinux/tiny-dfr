@@ -218,8 +218,7 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
     let status = fs::read_to_string(&status_path).unwrap_or_else(|_| "Unknown".to_string());
 
     let capacity = {
-        #[cfg(target_arch = "x86_64")]
-        {
+        if Path::new("/sys/class/power_supply/BAT0").exists() {
             let charge_now_path = format!("/sys/class/power_supply/{}/charge_now", battery);
             let charge_full_path = format!("/sys/class/power_supply/{}/charge_full", battery);
             let charge_now = fs::read_to_string(&charge_now_path)
@@ -232,9 +231,7 @@ fn get_battery_state(battery: &str) -> (u32, BatteryState) {
                 (Some(now), Some(full)) if full > 0.0 => ((now / full) * 100.0).round() as u32,
                 _ => 100,
             }
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
+        } else {
             let capacity_path = format!("/sys/class/power_supply/{}/capacity", battery);
             fs::read_to_string(&capacity_path)
                 .ok()
